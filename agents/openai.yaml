@@ -1,0 +1,4 @@
+interface:
+  display_name: "KernelSU Module Development"
+  short_description: "Build, package, and validate KernelSU modules"
+  default_prompt: "Use $kernelsu-module-development to create, validate, and package a KernelSU Manager module."
