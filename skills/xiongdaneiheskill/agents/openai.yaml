@@ -1,0 +1,4 @@
+interface:
+  display_name: "熊大内核通用分析"
+  short_description: "静态分析任意版本熊大 APP、SH 内核及完整文件落地行为"
+  default_prompt: "使用 $xiongdaneiheskill 静态分析我上传的任意版本熊大 APP 和内核 SH；有旧样本时再做同类版本比较。"
