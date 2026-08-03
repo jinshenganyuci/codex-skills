@@ -9,6 +9,24 @@ Personal collection of reusable Codex skills. Each directory under `skills/` is 
 - [`patch-duck-uc-update-checks`](skills/patch-duck-uc-update-checks/) — 静态分析鸭子公益内核，并在完整哈希匹配时移除 UC 浏览器与客户端强制更新验证。
 - [`xiongdaneiheskill`](skills/xiongdaneiheskill/) — 通用静态分析任意版本的熊大 APP/APK、内核、驱动与伪 `.sh` 文件，定位下载网址、配置目录及完整文件落地行为。
 
+## `build-xiongda-ksu-module` 中文说明
+
+这个 Skill 用于从用户指定的基础版本构建、迁移、测试并发布熊大 KernelSU 一键启动模块，以及无驱动、WebUI 手动驱动和启动前驱动三种变体。
+
+主要能力：
+
+- 保留基础版本未授权文件，精确校验允许修改的差异。
+- 提供本地 `0/1` 自启开关、低耗游戏监测、在线下载和 ELF/Shell 分流启动。
+- 在 KernelSU WebUI 中实时显示驱动输出，并区分实际加载、重复跳过、失败和结果不明。
+- 使用假驱动、假下载器和假 payload 测试，验证源码、ZIP、内置驱动和可复现构建。
+- 明确区分静态检查、模拟验证、真机启动与真实驱动加载证据。
+
+调用示例：
+
+```text
+使用 $build-xiongda-ksu-module 从我指定的基础 ZIP 制作手动驱动 WebUI 版本，并交付可复现的 KernelSU 模块包。
+```
+
 ## `patch-duck-uc-update-checks` 中文说明
 
 这个 Skill 用于静态检查鸭子公益内核的 Shell 包装器和 ARM64 ELF 内层，并移除 UC 浏览器安装/下载验证及客户端强制更新门槛。它保留卡密、机器码、签名和服务端认证逻辑。
