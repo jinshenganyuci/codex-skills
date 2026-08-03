@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "profiles": [
+    {
+      "id": "duck-4.9-2026-08-02-aarch64",
+      "product": "鸭子公益内核",
+      "built_in_version": "4.9",
+      "architecture": "aarch64",
+      "inner_size": 15388056,
+      "accepted_wrapper_header_sha256": [
+        "6568c5d2edfe4c59aacbb92bc383a4fdb2b76d530c8148c583b65c82c8acf934"
+      ],
+      "accepted_inner_sha256": {
+        "original": "0e3f9b9e5cd00e37d4ecb306dbd91ed4eedbb5a53b0e2b69f6ca694c57e3956e",
+        "update_only": "1a252969a84667da0a4afb1a030c5745c573a344f25013083d25ce0899cfbdef",
+        "no_uc": "5a6f6e3f3eafff23f36d5e99e0dabcb7265db193d8b026cdb411694b6b08485b",
+        "complete": "c9a379580bbaaba89efe2a210106966ce5139deda9411275fc892ebec922572b"
+      },
+      "expected_complete_inner_sha256": "c9a379580bbaaba89efe2a210106966ce5139deda9411275fc892ebec922572b",
+      "patches": [
+        {
+          "id": "disable-uc-failure-exit-1",
+          "offset": "0x8e0760",
+          "original_hex": "f3 03 1f 2a",
+          "replacement_hex": "b6 01 00 14",
+          "replacement_disassembly": "b 0x8e0e38"
+        },
+        {
+          "id": "disable-uc-failure-exit-2",
+          "offset": "0x8e076c",
+          "original_hex": "f3 03 1f 2a",
+          "replacement_hex": "b3 01 00 14",
+          "replacement_disassembly": "b 0x8e0e38"
+        },
+        {
+          "id": "disable-client-forced-update",
+          "offset": "0x8daf7c",
+          "original_hex": "e0 03 2f 91",
+          "replacement_hex": "e0 03 13 aa",
+          "replacement_disassembly": "mov x0, x19"
+        }
+      ],
+      "invariants": [
+        {
+          "id": "built-in-version-parser-input",
+          "offset": "0x8daf70",
+          "expected_hex": "e0 03 13 aa"
+        },
+        {
+          "id": "version-comparison",
+          "offset": "0x8dafbc",
+          "expected_hex": "3f 01 08 eb"
+        },
+        {
+          "id": "uc-native-success-block",
+          "offset": "0x8e0e38",
+          "expected_hex": "ea ba 91 d2 aa e7 a5 f2 ea 74 c5 f2 2a 97 f1 f2 33 00 80 52 49 fe ff 17"
+        }
+      ]
+    }
+  ]
+}

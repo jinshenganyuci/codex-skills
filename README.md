@@ -5,7 +5,27 @@ Personal collection of reusable Codex skills. Each directory under `skills/` is 
 ## Included skills
 
 - [`kernelsu-module-development`](skills/kernelsu-module-development/) — create, validate, package, migrate, and troubleshoot KernelSU Manager modules.
+- [`build-xiongda-ksu-module`](skills/build-xiongda-ksu-module/) — 构建、迁移、测试并发布熊大 KernelSU 一键启动模块及内核驱动变体。
+- [`patch-duck-uc-update-checks`](skills/patch-duck-uc-update-checks/) — 静态分析鸭子公益内核，并在完整哈希匹配时移除 UC 浏览器与客户端强制更新验证。
 - [`xiongdaneiheskill`](skills/xiongdaneiheskill/) — 通用静态分析任意版本的熊大 APP/APK、内核、驱动与伪 `.sh` 文件，定位下载网址、配置目录及完整文件落地行为。
+
+## `patch-duck-uc-update-checks` 中文说明
+
+这个 Skill 用于静态检查鸭子公益内核的 Shell 包装器和 ARM64 ELF 内层，并移除 UC 浏览器安装/下载验证及客户端强制更新门槛。它保留卡密、机器码、签名和服务端认证逻辑。
+
+主要安全边界：
+
+- 不执行上传的 SH、ELF、内嵌 curl、下载代码或驱动。
+- 只有内层 ELF SHA-256 和已审计包装器头部 SHA-256 同时匹配时才自动补丁。
+- 新版本、未知哈希、上下文变化、尾随载荷或架构不符都会失败关闭，必须重新静态分析。
+- 自动验证精确修改字节、包装器头部不变、压缩载荷往返一致，并生成 `.patch.json` 证据。
+- 客户端补丁不能绕过未来可能出现的服务端认证拒绝；外部驱动和自定义内核 syscall 也不在客户端补丁证明范围内。
+
+调用示例：
+
+```text
+使用 $patch-duck-uc-update-checks 静态分析我上传的新版鸭子公益内核 SH，去掉 UC 验证和客户端强制更新验证，并交付验证证据。
+```
 
 ## `xiongdaneiheskill` 中文说明
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "鸭子内核免 UC 与更新验证"
+  short_description: "安全移除鸭子公益内核的 UC 与客户端强制更新验证"
+  default_prompt: "Use $patch-duck-uc-update-checks to statically patch this 鸭子公益内核 SH so UC and client forced-update checks are removed, then validate and deliver the result."
