@@ -3,12 +3,13 @@
 ## 目录
 
 1. 稳定身份与派生方式
-2. 推荐目录
-3. 启动链
-4. 本地开关
-5. 下载与 payload
-6. 日志和状态
-7. 升级与卸载
+2. 按配置选择目录
+3. 安装后权限模型
+4. 启动链
+5. 本地开关
+6. 下载与 payload
+7. 日志和状态
+8. 升级与卸载
 
 ## 稳定身份与派生方式
 
@@ -18,7 +19,9 @@
 - “独立版本”若未明确并存，表示独立源码/ZIP，不表示新 ID。
 - 从用户点名的基础 ZIP 派生；不要从更高版本源码猜测旧版内容。
 
-## 推荐目录
+## 按配置选择目录
+
+`xiongda-full` 使用完整目录：
 
 ```text
 module-root/
@@ -44,7 +47,40 @@ module-root/
     style.css
 ```
 
+`minimal-action-manual-driver` 只保留用户要求的两条入口：
+
+```text
+module-root/
+  module.prop
+  action.sh                    # 只经 Shell 调用固定 launcher
+  customize.sh                # 明确恢复 action/bin 的 0755
+  uninstall.sh
+  bin/
+    fixed-launcher
+    driver-control
+  payload/
+    <用户原样内核或启动文件>
+    <用户原样驱动>
+  logs/
+  run/
+  webroot/
+    index.html
+    app.js
+    style.css
+```
+
+精简配置不得为了套用完整模板而加入 `service.sh`、`game_monitor.sh`、`autostart_enabled`、`bin/control`，WebUI 也不得调用 launcher。
+
 脚本始终用自身路径推导 `MODDIR`，不硬编码活动模块绝对目录。`customize.sh` 可以读取活动旧版目录做受控迁移，但写入目标必须是安装器提供的 `MODPATH`。
+
+## 安装后权限模型
+
+KernelSU 默认安装流程先将模块目录设为目录 `0755`、普通文件 `0644`，随后才 source `customize.sh`。因此 ZIP 的 Unix mode 只属于归档元数据，不是运行时权限证据。
+
+- 对 `action.sh`、存在的 lifecycle 脚本和每个 `bin/` helper 使用顶层固定命令 `set_perm "$MODPATH/相对路径" 0 0 0755`，或对受控 `bin/` 目录使用等价的 `set_perm_recursive`。
+- Action 与模块脚本调用 Shell helper 时写成 `/system/bin/sh "$MODDIR/bin/helper" ...`。
+- WebUI 固定命令写成 `/system/bin/sh ${moduleInfo.moduleDir}/bin/helper 子命令`，再交给 `exec`/`spawn`。
+- 内置 payload/驱动可以是 `0600`，只要设计明确由 Shell 读取；不要把它与 `bin/` helper 混为一谈。
 
 ## 启动链
 
@@ -66,7 +102,7 @@ KernelSU late_start
 ```text
 KernelSU Action
   -> action.sh
-  -> bin/download-and-run manual
+  -> /system/bin/sh bin/download-and-run manual
 ```
 
 手动驱动 WebUI：

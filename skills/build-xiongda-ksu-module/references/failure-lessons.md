@@ -1,5 +1,19 @@
 # 开发失败与修正
 
+## Action 空白、WebUI 报 Permission denied / exit 126
+
+原因：只检查了 ZIP 中 helper 的 `0755`，却忽略 KernelSU 默认安装会把普通文件重新设为 `0644`；Action 使用 `exec "$MODDIR/bin/helper"`，WebUI 也把裸 helper 路径直接交给 `exec`/`spawn`，而 `customize.sh` 没有恢复权限。
+
+修正：在 `customize.sh` 顶层给 `action.sh`、lifecycle 脚本和每个 `bin/` helper 明确 `set_perm ... 0755`；Action/WebUI 仍统一经 `/system/bin/sh` 调用 Shell helper。发行验证必须从安装后 `0644` 模型检查权限，并用缺权限、Action 裸执行、WebUI 裸路径三个负向 fixture 证明会失败。
+
+不要把 ZIP mode、Shell 语法通过或页面成功调用 bridge 当作安装后可执行证据。截图若出现 `can't execute: Permission denied` 与 `exit 126`，先核对设备上实际 mode、`customize.sh` 安装输出和完整调用命令。
+
+## WebUI 出现用户没要求的启动、停止或状态按钮
+
+原因：把熊大完整控制台当成所有派生模块的默认模板，没有把用户对 Action/WebUI 的功能边界冻结成白名单。
+
+修正：用户要求“Action 启动 payload、WebUI 只刷驱动”时选择 `minimal-action-manual-driver`，拒绝 `service.sh`、游戏监测、自启开关、`bin/control` 和 WebUI launcher 调用。复用熊大的入口分离与日志机制，不复用未要求的产品功能。
+
 ## Action 显示执行但熊大没启动
 
 原因：把 `.sh` 后缀当作 Shell，实际文件是 ARM64 ELF，却使用 `/system/bin/sh FILE`。

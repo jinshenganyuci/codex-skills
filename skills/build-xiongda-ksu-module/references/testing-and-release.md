@@ -14,6 +14,21 @@
 
 前四项不能替代后三项。
 
+## 安装后权限门禁
+
+KernelSU 默认安装顺序是：解压模块 → `set_perm_recursive MODPATH 0755 0644` → source `customize.sh`。因此验证分为两个不同事实：
+
+- ZIP Unix mode：用于确认归档没有丢失作者标记，但不代表设备安装后的 mode。
+- 安装后静态权限模型：从普通文件 `0644` 起步，只接受 `customize.sh` 中固定、顶层的 `set_perm`/`set_perm_recursive` 作为恢复执行位的证据。
+
+必须要求 `action.sh`、存在的 lifecycle 脚本和全部 `bin/` helper 最终为可执行；同时让入口经 `/system/bin/sh` 调用 Shell helper。以下三个负向包必须被拒绝：
+
+1. ZIP 为 `0755`，但 `customize.sh` 缺少 helper 的 `set_perm 0755`。
+2. Action 使用 `exec "$MODDIR/bin/helper"`。
+3. WebUI 把裸 `controlPath` 或动态路径直接传给 `exec`/`spawn`。
+
+用 `python3 scripts/test_verify_release.py` 执行内置的五个无害临时 fixture 回归；它不会执行真实 payload 或驱动。
+
 ## 基础版差异控制
 
 从正式 ZIP 解包后保存基线。发布前计算：
@@ -42,7 +57,8 @@
 | payload | Shell、ELF、stale PID、已运行、退出、卡密输入但日志无卡密 |
 | 驱动 | 实际加载标记、重复跳过、非零、未知成功、并发、哈希篡改 |
 | 游戏 | 启动转换、等待中关开关、驱动/下载期间退出、一次进程只触发一次 |
-| WebUI | 无 bridge、开关四状态、流式 stdout/stderr、exit 后 error、重复点击 |
+| WebUI | 无 bridge、所选配置的功能白名单、流式 stdout/stderr、exit 后 error、重复点击 |
+| 安装权限 | 缺少 `set_perm`、Action 裸执行、WebUI 裸路径、`/system/bin/sh` 双保险 |
 
 真实驱动一律用可控假脚本替代。假脚本只生成同样的结果标记和退出码，不包含 `.ko`。
 
@@ -56,7 +72,7 @@ dash -n FILE
 KSU_BUSYBOX ash -n FILE
 ```
 
-对 WebUI 运行 `node --check webroot/app.js`，并执行模拟 bridge 测试。扫描 `webroot` 中的 `http://`、`https://`、远程 script/link、iframe 和通用终端输入。
+对 WebUI 运行 `node --check webroot/app.js`，并执行模拟 bridge 测试。扫描 `webroot` 中的 `http://`、`https://`、远程 script/link、iframe 和通用终端输入；确认 bridge 第一参数来自固定命令表，命令表中的模块 Shell helper 均以 `/system/bin/sh` 开头。
 
 ## KernelSU 校验
 
@@ -76,12 +92,13 @@ KSU_BUSYBOX ash -n FILE
 - 每个成员解压字节与源码相同。
 - 包内驱动与当前用户输入逐字节相同。
 - `module.prop` ID 稳定、`versionCode` 高于已安装正式版。
-- `autostart_enabled` 符合本次默认值。
+- `xiongda-full` 的 `autostart_enabled` 符合本次默认值；`minimal-action-manual-driver` 不得包含它或游戏监测/服务/控制开关。
+- `customize.sh` 明确恢复所有运行入口和 `bin/` helper 的 `0755`；ZIP mode 不作为替代。
 - 不含 `disable`、`remove`、测试文件、缓存、triage 报告、旧 payload、秘密或 source map。
 - 从同一源码构建第二个 ZIP，两个 ZIP 逐字节相同。
 - 记录最终 ZIP 大小和 SHA-256。
 
-运行本 Skill 的 `verify_release.py` 做专项结构验证；它不能替代 KernelSU 通用校验器和功能测试。
+运行本 Skill 的 `verify_release.py` 并显式选择 `--profile xiongda-full` 或 `--profile minimal-action-manual-driver` 做专项结构、功能白名单和安装权限验证；它不能替代 KernelSU 通用校验器和功能测试。
 
 ## 真机验收
 

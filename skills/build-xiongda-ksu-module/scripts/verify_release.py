@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Verify a 熊大 KernelSU source tree and its packaged ZIP without execution."""
+"""Verify a 熊大 or derived KernelSU module without executing its payloads."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import re
+import shlex
 import stat
 import zipfile
 from pathlib import Path, PurePosixPath
@@ -13,7 +14,18 @@ from pathlib import Path, PurePosixPath
 
 DEFAULT_MODULE_ID = "A.xiongda-onekey-start"
 MODES = ("no-driver", "manual-driver", "prelaunch-driver")
+PROFILES = ("xiongda-full", "minimal-action-manual-driver")
 FORBIDDEN_PARTS = {".git", "__pycache__", "tests", "analysis", "node_modules"}
+RUNTIME_ROOT_SCRIPTS = {
+    "action.sh",
+    "boot-completed.sh",
+    "game_monitor.sh",
+    "late-load.sh",
+    "post-fs-data.sh",
+    "post-mount.sh",
+    "service.sh",
+    "uninstall.sh",
+}
 
 
 def normalize_member(raw_name: str) -> tuple[str, bool]:
@@ -89,6 +101,100 @@ def is_executable(mode: int) -> bool:
     return bool(mode & 0o111)
 
 
+def parse_octal_mode(value: str) -> int | None:
+    if not re.fullmatch(r"0?[0-7]{3,4}", value):
+        return None
+    try:
+        return int(value, 8)
+    except ValueError:
+        return None
+
+
+def module_relative_path(value: str) -> str | None:
+    prefixes = ("$MODPATH/", "${MODPATH}/")
+    relative = next((value[len(prefix) :] for prefix in prefixes if value.startswith(prefix)), None)
+    if relative is None:
+        return None
+    path = PurePosixPath(relative)
+    if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
+        return None
+    return path.as_posix()
+
+
+def parse_install_permission_rules(customize: str) -> list[tuple[bool, str, bool]]:
+    """Read narrow, non-executing set_perm rules in source order.
+
+    KernelSU extracts ordinary module files as 0644 before sourcing customize.sh.
+    Only explicit set_perm/set_perm_recursive calls count as post-install execute
+    permission proof. The verifier never executes customize.sh.
+    """
+
+    rules: list[tuple[bool, str, bool]] = []
+    logical_text = customize.replace("\\\r\n", " ").replace("\\\n", " ")
+    for raw_line in logical_text.splitlines():
+        try:
+            tokens = shlex.split(raw_line, comments=True, posix=True)
+        except ValueError:
+            continue
+        if not tokens:
+            continue
+        if tokens[0] == "set_perm" and len(tokens) == 5:
+            relative = module_relative_path(tokens[1])
+            mode = parse_octal_mode(tokens[4])
+            if relative is not None and mode is not None:
+                rules.append((False, relative, is_executable(mode)))
+        elif tokens[0] == "set_perm_recursive" and len(tokens) == 6:
+            relative = module_relative_path(tokens[1])
+            file_mode = parse_octal_mode(tokens[5])
+            if relative is not None and file_mode is not None:
+                rules.append((True, relative.rstrip("/"), is_executable(file_mode)))
+    return rules
+
+
+def installed_executable(relative: str, rules: list[tuple[bool, str, bool]]) -> bool:
+    executable = False  # KernelSU default for ordinary module files is 0644.
+    for recursive, target, target_executable in rules:
+        matches = relative == target or (recursive and relative.startswith(f"{target}/"))
+        if matches:
+            executable = target_executable
+    return executable
+
+
+def runtime_executable_files(files: dict[str, bytes]) -> list[str]:
+    return sorted(
+        name
+        for name in files
+        if name in RUNTIME_ROOT_SCRIPTS or name.startswith("bin/")
+    )
+
+
+def bridge_first_arguments(app: str) -> list[str]:
+    arguments: list[str] = []
+    pattern = re.compile(r"window\.ksu\.(?:exec|spawn)\(\s*([^,\n)]+)")
+    for raw_line in app.splitlines():
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith(("//", "*")):
+            continue
+        match = pattern.search(raw_line)
+        if match:
+            arguments.append(match.group(1).strip())
+    return arguments
+
+
+def has_shell_webui_command(app: str, helper: str, subcommand: str) -> bool:
+    expected = f"{helper} {subcommand}"
+    return any(
+        "/system/bin/sh" in line and expected in line
+        for line in app.splitlines()
+        if not line.lstrip().startswith(("//", "*"))
+    )
+
+
+def webui_bin_helpers(app: str) -> set[str]:
+    without_android_shell = app.replace("/system/bin/sh", "")
+    return set(re.findall(r"\bbin/([A-Za-z0-9._-]+)", without_android_shell))
+
+
 def normalized_delta(value: str) -> str:
     path = PurePosixPath(value)
     if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
@@ -101,6 +207,12 @@ def main() -> int:
     parser.add_argument("--source", type=Path, required=True)
     parser.add_argument("--zip", dest="release_zip", type=Path, required=True)
     parser.add_argument("--mode", choices=MODES, required=True)
+    parser.add_argument("--profile", choices=PROFILES, default="xiongda-full")
+    parser.add_argument(
+        "--action-helper",
+        type=normalized_delta,
+        help="module-relative Shell helper invoked by action.sh",
+    )
     parser.add_argument("--driver", type=Path)
     parser.add_argument("--base-zip", type=Path)
     parser.add_argument("--expected-base-delta", action="append", default=[], type=normalized_delta)
@@ -123,6 +235,14 @@ def main() -> int:
         parser.error("--driver is not valid with no-driver mode")
     if args.expected_base_delta and args.base_zip is None:
         parser.error("--expected-base-delta requires --base-zip")
+    if args.profile == "minimal-action-manual-driver" and args.mode != "manual-driver":
+        parser.error("minimal-action-manual-driver profile requires --mode manual-driver")
+    if args.profile == "minimal-action-manual-driver" and args.action_helper is None:
+        parser.error("minimal-action-manual-driver profile requires --action-helper")
+
+    action_helper = args.action_helper
+    if action_helper is None and args.profile == "xiongda-full":
+        action_helper = "bin/download-and-run"
 
     try:
         source_files, source_modes = read_source(source)
@@ -161,6 +281,7 @@ def main() -> int:
         errors.append(f"invalid versionCode: {version_code!r}")
     else:
         passes.append(f"module id/versionCode accepted: {args.module_id}/{version_code}")
+    passes.append(f"verification profile={args.profile}, driver mode={args.mode}")
 
     for marker in ("disable", "remove"):
         if marker in source_files:
@@ -172,27 +293,63 @@ def main() -> int:
     if forbidden:
         errors.append(f"release contains development files: {forbidden}")
 
-    config = source_files.get("autostart_enabled")
-    allowed_config = {b"0\n", b"1\n"}
-    if config not in allowed_config:
-        errors.append("autostart_enabled must contain exactly 0 or 1 plus LF")
-    elif args.autostart_default != "any" and config != f"{args.autostart_default}\n".encode():
-        errors.append(
-            f"autostart_enabled is {config.decode().strip()}, expected {args.autostart_default}"
-        )
-    else:
-        passes.append(f"autostart default is {config.decode().strip()}")
+    if args.profile == "xiongda-full":
+        config = source_files.get("autostart_enabled")
+        allowed_config = {b"0\n", b"1\n"}
+        if config not in allowed_config:
+            errors.append("autostart_enabled must contain exactly 0 or 1 plus LF")
+        elif args.autostart_default != "any" and config != f"{args.autostart_default}\n".encode():
+            errors.append(
+                f"autostart_enabled is {config.decode().strip()}, expected {args.autostart_default}"
+            )
+        else:
+            passes.append(f"autostart default is {config.decode().strip()}")
 
-    control = as_text(source_files, "bin/control")
-    monitor = as_text(source_files, "game_monitor.sh")
-    required_states = ("enabled-running", "enabled-stopped", "disabled-ready", "disabled-stopped")
-    for state_name in required_states:
-        if state_name not in control:
-            errors.append(f"bin/control is missing state {state_name}")
-    if "IFS= read -r" not in monitor or "autostart_enabled" not in monitor:
-        errors.append("game_monitor.sh does not use the local built-in 0/1 read pattern")
-    if "ksud module config" in monitor:
-        errors.append("hot monitor loop must not call ksud module config")
+        control = as_text(source_files, "bin/control")
+        monitor = as_text(source_files, "game_monitor.sh")
+        required_states = ("enabled-running", "enabled-stopped", "disabled-ready", "disabled-stopped")
+        for state_name in required_states:
+            if state_name not in control:
+                errors.append(f"bin/control is missing state {state_name}")
+        if "IFS= read -r" not in monitor or "autostart_enabled" not in monitor:
+            errors.append("game_monitor.sh does not use the local built-in 0/1 read pattern")
+        if "ksud module config" in monitor:
+            errors.append("hot monitor loop must not call ksud module config")
+    else:
+        forbidden_full_files = (
+            "autostart_enabled",
+            "bin/control",
+            "game_monitor.sh",
+            "service.sh",
+        )
+        leaked = [name for name in forbidden_full_files if name in source_files]
+        if leaked:
+            errors.append(f"minimal profile contains unrequested full-Xiongda controls: {leaked}")
+        else:
+            passes.append("minimal profile omits auto-start, game monitor, service, and control switch")
+
+    if action_helper is not None:
+        action = as_text(source_files, "action.sh")
+        if action_helper not in source_files:
+            errors.append(f"Action helper is missing: {action_helper}")
+        if action_helper not in action:
+            errors.append(f"action.sh does not reference fixed helper: {action_helper}")
+        elif not any(
+            "/system/bin/sh" in line and action_helper in line
+            for line in action.splitlines()
+            if not line.lstrip().startswith("#")
+        ):
+            errors.append(
+                f"action.sh must invoke {action_helper} through /system/bin/sh; "
+                "direct module helper execution can fail after KernelSU installs it as 0644"
+            )
+        direct_action = re.compile(
+            r"^\s*(?:exec\s+)?[\"']?\$(?:MODDIR|\{MODDIR\})/bin/"
+        )
+        if any(direct_action.search(line) for line in action.splitlines()):
+            errors.append("action.sh directly executes a module bin helper instead of /system/bin/sh")
+        elif action_helper in source_files and action_helper in action:
+            passes.append(f"Action invokes {action_helper} through Android shell")
 
     for name, data in source_files.items():
         if not name.startswith("webroot/") or not name.endswith((".html", ".js", ".css")):
@@ -228,10 +385,40 @@ def main() -> int:
         for token in required_helper_tokens:
             if token not in helper:
                 errors.append(f"manual driver helper is missing token: {token}")
-        required_app_tokens = ("ksu.spawn", "stdout", "stderr", "exit", "error", "driver-control run")
+        required_app_tokens = ("ksu.spawn", "stdout", "stderr", "exit", "error")
         for token in required_app_tokens:
             if token not in app:
                 errors.append(f"WebUI streaming implementation is missing token: {token}")
+        for subcommand in ("run", "log"):
+            if not has_shell_webui_command(app, "bin/driver-control", subcommand):
+                errors.append(
+                    "WebUI must define fixed command "
+                    f"/system/bin/sh <moduleDir>/bin/driver-control {subcommand}"
+                )
+        unsafe_bridge_arguments = [
+            argument
+            for argument in bridge_first_arguments(app)
+            if "commands" not in argument and "/system/bin/sh" not in argument
+        ]
+        if unsafe_bridge_arguments:
+            errors.append(
+                "WebUI bridge directly receives a path/dynamic expression instead of a fixed "
+                f"shell command: {unsafe_bridge_arguments}"
+            )
+        allowed_webui_helpers = {"driver-control"}
+        if args.profile == "xiongda-full":
+            allowed_webui_helpers.add("control")
+            for subcommand in ("status", "enable", "disable"):
+                if not has_shell_webui_command(app, "${control}", subcommand):
+                    errors.append(
+                        f"WebUI control command {subcommand} must invoke bin/control through /system/bin/sh"
+                    )
+        unexpected_webui_helpers = sorted(webui_bin_helpers(app) - allowed_webui_helpers)
+        if unexpected_webui_helpers:
+            errors.append(
+                "WebUI references helpers outside the selected profile allowlist: "
+                f"{unexpected_webui_helpers}"
+            )
         if "刷入驱动" not in page:
             errors.append("WebUI page has no visible 刷入驱动 control")
         if "eval(" in helper or "sh -c" in helper:
@@ -271,16 +458,27 @@ def main() -> int:
                     f"driver is byte-identical: {member}, size={len(driver_data)}, sha256={digest}"
                 )
 
-    expected_exec = sorted(
-        name
-        for name in zip_files
-        if name.endswith(".sh") or name.startswith("bin/")
-    )
+    expected_exec = runtime_executable_files(zip_files)
     non_exec = [name for name in expected_exec if not is_executable(zip_modes.get(name, 0))]
     if non_exec:
-        errors.append(f"packaged scripts/helpers are not executable: {non_exec}")
+        errors.append(f"archive metadata marks runtime scripts/helpers non-executable: {non_exec}")
     else:
-        passes.append("packaged shell scripts and bin helpers are executable")
+        passes.append("archive metadata marks runtime scripts and bin helpers executable")
+
+    customize = as_text(source_files, "customize.sh")
+    permission_rules = parse_install_permission_rules(customize)
+    missing_installed_exec = [
+        name for name in runtime_executable_files(source_files) if not installed_executable(name, permission_rules)
+    ]
+    if missing_installed_exec:
+        errors.append(
+            "KernelSU installs ordinary files as 0644; customize.sh does not restore 0755 "
+            f"for runtime scripts/helpers: {missing_installed_exec}"
+        )
+    else:
+        passes.append(
+            "customize.sh statically restores execute permission after KernelSU's 0644 default"
+        )
 
     if args.base_zip is not None:
         base_path = args.base_zip.resolve()
@@ -316,7 +514,7 @@ def main() -> int:
     if errors:
         print(f"FAIL errors={len(errors)}")
         return 1
-    print("PASS 熊大 KernelSU release verification complete (static only; no payload executed)")
+    print("PASS KernelSU release verification complete (static only; no payload executed)")
     return 0
 
 

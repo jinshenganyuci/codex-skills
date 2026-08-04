@@ -9,6 +9,25 @@ KernelSU Manager 将模块 WebUI 放在 `https://mui.kernelsu.org/` 合成来源
 - 不把输入框、URL、文件名、配置值或网络响应拼进 command、args、cwd 或 env。
 - shell helper 内再次使用 `case` 白名单；拒绝额外参数。
 
+## 安装权限与调用形式
+
+KernelSU 默认把普通模块文件安装为 `0644`。即使 ZIP 中的 `bin/driver-control` 是 `0755`，页面也不得直接把它的路径传给 `exec` 或 `spawn`。
+
+必须同时使用两层保护：
+
+```sh
+# customize.sh：安装后恢复 helper 权限
+set_perm "$MODPATH/bin/driver-control" 0 0 0755
+```
+
+```js
+// WebUI：仍由 Android Shell 读取 helper，不依赖 x 位
+const driverRun = `/system/bin/sh ${moduleInfo.moduleDir}/bin/driver-control run`;
+const driverLog = `/system/bin/sh ${moduleInfo.moduleDir}/bin/driver-control log`;
+```
+
+禁止把 `controlPath` 裸传给 `window.ksu.spawn`，也禁止用动态模板直接执行 `controlPath run`。专项验证器必须静态检查两条固定 Shell 命令、`customize.sh` 的安装后权限和 bridge 第一参数。
+
 ## 当前原生 `spawn` 协议
 
 调用形状：
@@ -86,6 +105,7 @@ driver 2>&1 | tee log
 1. `moduleInfo()` 返回当前 ID 和 moduleDir。
 2. `exec` 回传四种开关状态。
 3. `spawn` 依次发 stdout、stderr、exit、error。
-4. 命令严格等于固定 helper `run`，args/options 为固定 JSON。
+4. 命令严格等于 `/system/bin/sh <moduleDir>/bin/driver-control run`，args/options 为固定 JSON。
 5. 成功、非零、重复任务三种状态均恢复按钮。
 6. 页面没有远程资源，也没有任意命令输入。
+7. 删除 helper 的 `set_perm 0755`、Action 直接执行 helper、WebUI 传裸路径时，发行验证必须失败。

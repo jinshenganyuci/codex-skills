@@ -1,4 +1,4 @@
 interface:
-  display_name: "熊大 KernelSU 模块构建"
-  short_description: "构建、迁移、测试并发布熊大 KernelSU 模块及驱动 WebUI 变体"
-  default_prompt: "使用 $build-xiongda-ksu-module 从指定基础版本制作一个经过验证的熊大 KernelSU 模块变体。"
+  display_name: "熊大及派生 KernelSU 模块构建"
+  short_description: "构建、迁移并验证熊大及同类内核+驱动 KernelSU 模块"
+  default_prompt: "使用 $build-xiongda-ksu-module 构建一个严格遵守功能边界并通过安装后权限验证的 KernelSU 内核与驱动模块。"

@@ -1,6 +1,6 @@
 ---
 name: build-xiongda-ksu-module
-description: Build, migrate, audit, test, and package the `A.xiongda-onekey-start` KernelSU module and derived 熊大 variants. Use when Codex must create or update 熊大一键启动 module ZIPs, preserve a chosen base release, implement manual or game auto-start and a local 0/1 switch, download and launch the current 熊大 payload, embed a byte-exact driver in manual-WebUI or prelaunch mode, stream root-operation logs through KernelSU WebUI, diagnose a prior module that did not execute, or deliver a reproducible validated release.
+description: Build, migrate, audit, test, and package the `A.xiongda-onekey-start` KernelSU module and derived Android kernel-plus-driver variants. Use when Codex must create or update 熊大一键启动 or a minimal Action-plus-manual-driver module, preserve a chosen base release, implement manual or game auto-start, embed a byte-exact driver, stream root-operation logs through KernelSU WebUI, prevent post-install 0644 permission failures, diagnose a module that did not execute, or deliver a reproducible validated release.
 ---
 
 # 构建熊大 KernelSU 模块
@@ -35,6 +35,9 @@ description: Build, migrate, audit, test, and package the `A.xiongda-onekey-star
 - 手动启动、游戏自启、本地开关、在线下载、卡密输入分别是否保留。
 - 驱动模式、日志保留方式、覆盖安装还是并存安装。
 - 用户给出的当前 payload、驱动、下载地址和预期设备 ABI/内核。
+- Action 与 WebUI 分别允许出现的按钮、子命令和日志；未列入白名单的功能不得自行添加。
+
+用户明确说“WebUI 只放驱动”“不要自启/下载/开关”时，这些限制优先于熊大基础版架构，不得把 WebUI 扩成完整控制台。
 
 将“独立版本”默认解释为独立源码和独立 ZIP、仍使用原 ID 覆盖升级；只有用户明确要求两套同时安装时才更换 ID，并重新审计两个监测服务、日志、锁和 payload 目录冲突。
 
@@ -43,10 +46,28 @@ description: Build, migrate, audit, test, and package the `A.xiongda-onekey-star
 | 模式 | 调用位置 | 必须保证 |
 |---|---|---|
 | `no-driver` | 不调用驱动 | 熊大原启动链完全不含驱动逻辑 |
-| `manual-driver` | 仅 WebUI 按钮调用 `bin/driver-control run` | 手动/游戏自启不会加载驱动；页面实时显示完整日志 |
+| `manual-driver` | 仅 WebUI 按钮经 `/system/bin/sh` 调用 `bin/driver-control run` | 手动/游戏自启不会加载驱动；页面实时显示完整日志 |
 | `prelaunch-driver` | `download-and-run` 在 payload 前调用固定 helper | 驱动失败阻止 payload；游戏存活和开关在驱动后再次确认 |
 
 不要把一种模式的逻辑悄悄带进另一种模式。
+
+### 选择验证配置
+
+- `xiongda-full`：仅用于保留熊大自启开关、游戏监测、下载器和完整控制状态的模块。
+- `minimal-action-manual-driver`：用于“模块卡 Action 只启动内核，WebUI 只手动刷驱动/看驱动日志”的精简派生模块；不得加入 `service.sh`、`game_monitor.sh`、`autostart_enabled` 或 `bin/control`。
+
+不要为了让精简模块适配熊大验证器而加入用户未要求的功能；应选择精简配置并提供固定的 `--action-helper`。
+
+## 防止安装后权限失效
+
+KernelSU 默认解压会把普通模块文件设为 `0644`，ZIP 中记录的 `0755` 不能证明安装后仍可直接执行。必须同时做到：
+
+1. 在 `customize.sh` 顶层使用固定的 `set_perm "$MODPATH/..." 0 0 0755`，覆盖 `action.sh`、存在的生命周期脚本和每个 `bin/` helper。
+2. Action、WebUI 和其它模块脚本调用 Shell helper 时仍显式使用 `/system/bin/sh HELPER ...`，不依赖执行位。
+3. 不直接 `exec "$MODDIR/bin/helper"`，不把裸 helper 路径直接传给 `window.ksu.exec`/`spawn`。
+4. 发布前用专项验证器静态模拟 KernelSU 的 `0644` 默认值，并运行权限负向回归；不得只看 `zipinfo`。
+
+内置原始 payload/驱动若始终经解释器读取，可以保持 `0600`；不要因 `.sh` 后缀把它误判为必须可执行的模块 helper。
 
 ## 建立派生工作树
 
@@ -75,9 +96,9 @@ python3 "$SKILL_DIR/scripts/extract_base.py" BASE.zip WORK/A.xiongda-onekey-star
 - 卡密自动输入：复用已验证的 PTY/输入链；不把卡密写入日志、Skill 或公开测试数据。
 - 内置驱动：按当前输入动态写入 helper 的预期大小和 SHA-256，禁止复用历史常量。
 
-## 保留低耗自启架构
+## 按需保留低耗自启架构
 
-除非用户明确要求改架构，保持：
+仅在选择 `xiongda-full` 或用户明确要求游戏自启时保持：
 
 - 模块根 `autostart_enabled`，内容仅允许 `0` 或 `1`；新装默认 `0`。
 - `bin/control status|enable|disable` 使用临时文件加 `mv` 原子写入。
@@ -120,10 +141,10 @@ WebUI 使用 KernelSU `spawn` 的真实事件协议，分别处理 `stdout.data`
 
 1. 基础版未授权文件逐字节不变。
 2. Bash、Dash、KernelSU BusyBox ash 解析所有普通 shell；自解包驱动只解析 marker 之前的文本前缀。
-3. Node 解析 WebUI JS；用假 `window.ksu` 验证控制开关和 `spawn` 四类事件。
+3. Node 解析 WebUI JS；用假 `window.ksu` 验证所选配置允许的按钮和 `spawn` 四类事件。
 4. 用假驱动覆盖实际加载、重复跳过、退出失败、退出 0 但结果不明、并发锁、文件篡改。
-5. 运行本地 0/1 开关循环：默认关闭、非法值、关闭后重开、同 PID 重触发、disable/remove 退出。
-6. 用假下载器和假 payload 验证文件名、ELF/Shell 分流、卡密不泄漏、游戏退出取消。
+5. 静态模拟安装后普通文件为 `0644`，确认 `customize.sh` 给所有运行入口/helper 恢复 `0755`；把缺少 `set_perm`、Action 直接执行 helper、WebUI 传裸路径作为必须失败的负向用例。
+6. `xiongda-full` 才运行本地 0/1 开关、假下载器、游戏边沿和自启取消矩阵；精简配置必须证明这些文件与 WebUI 操作不存在。
 7. 校验源目录和 ZIP、`unzip -t`、根布局、源码/ZIP 字节一致、驱动字节一致、可复现构建和最终 SHA-256。
 
 运行专项验证器：
@@ -133,6 +154,7 @@ python3 "$SKILL_DIR/scripts/verify_release.py" \
   --source WORK/A.xiongda-onekey-start \
   --zip DIST/module.zip \
   --mode manual-driver \
+  --profile xiongda-full \
   --driver CURRENT_DRIVER.sh \
   --base-zip BASE.zip \
   --expected-base-delta module.prop \
@@ -143,6 +165,21 @@ python3 "$SKILL_DIR/scripts/verify_release.py" \
   --expected-base-delta webroot/app.js \
   --expected-base-delta webroot/style.css
 ```
+
+精简 Action+WebUI 驱动模块改用：
+
+```sh
+python3 "$SKILL_DIR/scripts/verify_release.py" \
+  --source WORK/MODULE_ID \
+  --zip DIST/module.zip \
+  --mode manual-driver \
+  --profile minimal-action-manual-driver \
+  --action-helper bin/FIXED_LAUNCHER \
+  --module-id MODULE_ID \
+  --driver CURRENT_DRIVER.sh
+```
+
+升级本 Skill 后先运行 `python3 "$SKILL_DIR/scripts/test_verify_release.py"`，确认权限和直接执行的五个正反回归全部通过。
 
 按实际批准范围调整 delta，不能把未知差异全部放行。验证细节和校验器误报处理见 [references/testing-and-release.md](references/testing-and-release.md)。
 
