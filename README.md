@@ -8,6 +8,26 @@ Personal collection of reusable Codex skills. Each directory under `skills/` is 
 - [`build-xiongda-ksu-module`](skills/build-xiongda-ksu-module/) — 构建、迁移并验证熊大及同类内核+驱动 KernelSU 模块，防止安装后权限失效。
 - [`patch-duck-uc-update-checks`](skills/patch-duck-uc-update-checks/) — 静态分析鸭子公益内核，并在完整哈希匹配时移除 UC 浏览器与客户端强制更新验证。
 - [`xiongdaneiheskill`](skills/xiongdaneiheskill/) — 通用静态分析任意版本的熊大 APP/APK、内核、驱动与伪 `.sh` 文件，定位下载网址、配置目录及完整文件落地行为。
+- [`quark-anonymous-download`](skills/quark-anonymous-download/) — 不登录、无账号 Cookie 地列出和下载夸克公开分享中的可匿名下载文件。
+
+## `quark-anonymous-download` 中文说明
+
+这个 Skill 用于处理 `https://pan.quark.cn/s/...` 公开分享：先匿名列目录，再按精确文件名、关键词、最新版本或全部可下载文件保存到本地。
+
+主要能力：
+
+- 只使用 Python 3 标准库和内存 CookieJar，不读取浏览器资料、账号 Cookie 或已保存凭据。
+- 递归列出分享目录；支持精确 `--name`、关键词 `--contains`、明确指定最新 `--latest`、全部 `--all`，以及按网盘 `updated_at` 追加日期的 `--incremental`。
+- 使用夸克临时直链、`Range` 分段、HTTP 412 重签、最终字节数与 SHA-256、临时文件和原子替换，避免把截断内容交付为成功文件。
+- 不解压、不执行、不安装下载内容；交付远端路径、大小和 SHA-256。
+
+安全边界：服务端返回 `require login`、`download file size limit`、无匿名直链或类似限制时，只报告无法匿名下载的文件；不尝试登录、转存绕过、Cookie 注入或其他绕过方式。
+
+调用示例：
+
+```text
+使用 $quark-anonymous-download 匿名列出这个夸克分享，并下载其中名为 xxx.zip 的文件；如果有多个匹配项先让我选择。
+```
 
 ## `build-xiongda-ksu-module` 中文说明
 

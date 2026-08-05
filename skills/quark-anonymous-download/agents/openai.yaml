@@ -1,0 +1,4 @@
+interface:
+  display_name: "夸克匿名下载"
+  short_description: "Anonymous public Quark share downloads"
+  default_prompt: "Use $quark-anonymous-download to anonymously list or download files from this public Quark share link."
