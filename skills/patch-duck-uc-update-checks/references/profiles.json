@@ -2,6 +2,197 @@
   "schema_version": 1,
   "profiles": [
     {
+      "id": "duck-5.2-2026-08-05-aarch64",
+      "product": "鸭子公益内核",
+      "built_in_version": "5.2",
+      "architecture": "aarch64",
+      "inner_size": 15401384,
+      "accepted_wrapper_header_sha256": [
+        "6568c5d2edfe4c59aacbb92bc383a4fdb2b76d530c8148c583b65c82c8acf934"
+      ],
+      "accepted_inner_sha256": {
+        "original": "6fe5dfaf04473c46395c5e3144513dcdef813c0ae275f2e795cbf4e45e3f2fc1",
+        "update_only": "5c098e19f3a1bee30d37581e5a2984716032013f2f807c488066aa4fa5825a65",
+        "no_uc": "db8c97e603f929e2fb17c56ee2568670fe84f21bed0e3768521a5be6a3e9ba0b",
+        "complete": "89d1a2f4c232aa9bdaa53ea8e8229f701332649ed6b4c25c88882a5a73dd3819"
+      },
+      "expected_complete_inner_sha256": "89d1a2f4c232aa9bdaa53ea8e8229f701332649ed6b4c25c88882a5a73dd3819",
+      "uc_success_flow": {
+        "target": "0x8e2cc8",
+        "state_join": "0x8e25bc",
+        "target_entry_hex": "ea ba 91 d2 aa e7 a5 f2 ea 74 c5 f2 2a 97 f1 f2 33 00 80 52 38 fe ff 17"
+      },
+      "patches": [
+        {
+          "id": "disable-uc-failure-exit-1",
+          "offset": "0x8e25ac",
+          "original_hex": "f3 03 1f 2a",
+          "replacement_hex": "c7 01 00 14",
+          "replacement_disassembly": "b 0x8e2cc8"
+        },
+        {
+          "id": "disable-uc-failure-exit-2",
+          "offset": "0x8e25b8",
+          "original_hex": "f3 03 1f 2a",
+          "replacement_hex": "c4 01 00 14",
+          "replacement_disassembly": "b 0x8e2cc8"
+        },
+        {
+          "id": "disable-client-forced-update",
+          "offset": "0x8db52c",
+          "original_hex": "e0 03 2f 91",
+          "replacement_hex": "e0 03 13 aa",
+          "replacement_disassembly": "mov x0, x19"
+        }
+      ],
+      "invariants": [
+        {
+          "id": "built-in-version-parser-input",
+          "offset": "0x8db520",
+          "expected_hex": "e0 03 13 aa"
+        },
+        {
+          "id": "version-comparison",
+          "offset": "0x8db56c",
+          "expected_hex": "3f 01 08 eb"
+        },
+        {
+          "id": "uc-native-success-state-init",
+          "offset": "0x8e2cc8",
+          "expected_hex": "ea ba 91 d2 aa e7 a5 f2 ea 74 c5 f2 2a 97 f1 f2 33 00 80 52 38 fe ff 17"
+        },
+        {
+          "id": "uc-state-join",
+          "offset": "0x8e25bc",
+          "expected_hex": "c8 1f 00 90 08 45 40 f9 29 00 80 52"
+        }
+      ]
+    },
+    {
+      "id": "duck-5.1-2026-08-04-aarch64",
+      "product": "鸭子公益内核",
+      "built_in_version": "5.1",
+      "architecture": "aarch64",
+      "inner_size": 15396360,
+      "accepted_wrapper_header_sha256": [
+        "6568c5d2edfe4c59aacbb92bc383a4fdb2b76d530c8148c583b65c82c8acf934"
+      ],
+      "accepted_inner_sha256": {
+        "original": "31d318ca0a7987f43bcf1073310375d19158b13dd8b1bb8cb7c827f477d9d663",
+        "update_only": "714794dbc560e098636fa2974737feecf8eccc691a408c48d0f01c926440225c",
+        "no_uc": "74e9df40ee50431f46983cf44e20961e02b2ea73ed37f8f4426124763a625f35",
+        "complete": "1506987fbacb2846fd35e0a3e38e2ae9d221dabaf1b97cd5d598a3a04af3ab57"
+      },
+      "expected_complete_inner_sha256": "1506987fbacb2846fd35e0a3e38e2ae9d221dabaf1b97cd5d598a3a04af3ab57",
+      "uc_success_flow": {
+        "target": "0x8e1418",
+        "state_join": "0x8e0d50",
+        "target_entry_hex": "ea ba 91 d2 aa e7 a5 f2 ea 74 c5 f2 2a 97 f1 f2 33 00 80 52 49 fe ff 17"
+      },
+      "patches": [
+        {
+          "id": "disable-uc-failure-exit-1",
+          "offset": "0x8e0d40",
+          "original_hex": "f3 03 1f 2a",
+          "replacement_hex": "b6 01 00 14",
+          "replacement_disassembly": "b 0x8e1418"
+        },
+        {
+          "id": "disable-uc-failure-exit-2",
+          "offset": "0x8e0d4c",
+          "original_hex": "f3 03 1f 2a",
+          "replacement_hex": "b3 01 00 14",
+          "replacement_disassembly": "b 0x8e1418"
+        },
+        {
+          "id": "disable-client-forced-update",
+          "offset": "0x8db55c",
+          "original_hex": "e0 03 2f 91",
+          "replacement_hex": "e0 03 13 aa",
+          "replacement_disassembly": "mov x0, x19"
+        }
+      ],
+      "invariants": [
+        {
+          "id": "built-in-version-parser-input",
+          "offset": "0x8db550",
+          "expected_hex": "e0 03 13 aa"
+        },
+        {
+          "id": "version-comparison",
+          "offset": "0x8db59c",
+          "expected_hex": "3f 01 08 eb"
+        },
+        {
+          "id": "uc-native-success-state-init",
+          "offset": "0x8e1418",
+          "expected_hex": "ea ba 91 d2 aa e7 a5 f2 ea 74 c5 f2 2a 97 f1 f2 33 00 80 52 49 fe ff 17"
+        }
+      ]
+    },
+    {
+      "id": "duck-5.0-2026-08-03-aarch64",
+      "product": "鸭子公益内核",
+      "built_in_version": "5.0",
+      "architecture": "aarch64",
+      "inner_size": 15390184,
+      "accepted_wrapper_header_sha256": [
+        "6568c5d2edfe4c59aacbb92bc383a4fdb2b76d530c8148c583b65c82c8acf934"
+      ],
+      "accepted_inner_sha256": {
+        "original": "998eb16e5326f55a7e7ab9e0586ed3030a9709b4200c8ad3bc9468638be76a90",
+        "update_only": "cc9087f8746d0311ffde32f143f07893e74b287487bf3cd9cc3012794f5a6c08",
+        "no_uc": "2f3ed13b5984a8ffb4fe09591d9512c1e56e71ca6d84176ddb5dd5da3ad54bdd",
+        "complete": "8e3a6481af33e2572a0f7565a33fd86c3375998abdaabbabcb357beb65c30a06"
+      },
+      "expected_complete_inner_sha256": "8e3a6481af33e2572a0f7565a33fd86c3375998abdaabbabcb357beb65c30a06",
+      "uc_success_flow": {
+        "target": "0x8e0fa8",
+        "state_join": "0x8e08e0",
+        "target_entry_hex": "ea ba 91 d2 aa e7 a5 f2 ea 74 c5 f2 2a 97 f1 f2 33 00 80 52 49 fe ff 17"
+      },
+      "patches": [
+        {
+          "id": "disable-uc-failure-exit-1",
+          "offset": "0x8e08d0",
+          "original_hex": "f3 03 1f 2a",
+          "replacement_hex": "b6 01 00 14",
+          "replacement_disassembly": "b 0x8e0fa8"
+        },
+        {
+          "id": "disable-uc-failure-exit-2",
+          "offset": "0x8e08dc",
+          "original_hex": "f3 03 1f 2a",
+          "replacement_hex": "b3 01 00 14",
+          "replacement_disassembly": "b 0x8e0fa8"
+        },
+        {
+          "id": "disable-client-forced-update",
+          "offset": "0x8db0ec",
+          "original_hex": "e0 03 2f 91",
+          "replacement_hex": "e0 03 13 aa",
+          "replacement_disassembly": "mov x0, x19"
+        }
+      ],
+      "invariants": [
+        {
+          "id": "built-in-version-parser-input",
+          "offset": "0x8db0e0",
+          "expected_hex": "e0 03 13 aa"
+        },
+        {
+          "id": "version-comparison",
+          "offset": "0x8db12c",
+          "expected_hex": "3f 01 08 eb"
+        },
+        {
+          "id": "uc-native-success-state-init",
+          "offset": "0x8e0fa8",
+          "expected_hex": "ea ba 91 d2 aa e7 a5 f2 ea 74 c5 f2 2a 97 f1 f2 33 00 80 52 49 fe ff 17"
+        }
+      ]
+    },
+    {
       "id": "duck-4.9-2026-08-02-aarch64",
       "product": "鸭子公益内核",
       "built_in_version": "4.9",
@@ -17,6 +208,11 @@
         "complete": "c9a379580bbaaba89efe2a210106966ce5139deda9411275fc892ebec922572b"
       },
       "expected_complete_inner_sha256": "c9a379580bbaaba89efe2a210106966ce5139deda9411275fc892ebec922572b",
+      "uc_success_flow": {
+        "target": "0x8e0e38",
+        "state_join": "0x8e0770",
+        "target_entry_hex": "ea ba 91 d2 aa e7 a5 f2 ea 74 c5 f2 2a 97 f1 f2 33 00 80 52 49 fe ff 17"
+      },
       "patches": [
         {
           "id": "disable-uc-failure-exit-1",

@@ -64,6 +64,22 @@ def validate_sha(value: Any, label: str) -> str:
     return lowered
 
 
+def decode_aarch64_b_target(instruction: bytes, source: int, label: str) -> int:
+    """Return the file offset targeted by one little-endian AArch64 B instruction."""
+    if len(instruction) != 4:
+        raise PatchError(f"{label} must be one 4-byte AArch64 instruction")
+    encoded = struct.unpack("<I", instruction)[0]
+    if encoded & 0x7C000000 != 0x14000000:
+        raise PatchError(f"{label} is not an unconditional AArch64 B instruction")
+    immediate = encoded & 0x03FFFFFF
+    if immediate & (1 << 25):
+        immediate -= 1 << 26
+    target = source + (immediate << 2)
+    if target < 0:
+        raise PatchError(f"{label} branches before the start of the inner ELF")
+    return target
+
+
 def load_profiles(path: Path) -> list[dict[str, Any]]:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
@@ -153,6 +169,69 @@ def load_profiles(path: Path) -> list[dict[str, Any]]:
             patch["_original"] = original
             patch["_replacement"] = replacement
 
+        uc_patches = [
+            patch
+            for patch in patches
+            if patch["id"].startswith("disable-uc-failure-exit-")
+        ]
+        if not uc_patches:
+            raise PatchError(f"{profile_id}: profile has no UC failure-exit patch")
+        success_flow = profile.get("uc_success_flow")
+        if not isinstance(success_flow, dict):
+            raise PatchError(f"{profile_id}: uc_success_flow must be an object")
+        target = parse_offset(success_flow.get("target"))
+        state_join = parse_offset(success_flow.get("state_join"))
+        target_entry = parse_hex(
+            success_flow.get("target_entry_hex"),
+            f"{profile_id}.uc_success_flow.target_entry_hex",
+        )
+        if len(target_entry) < 8 or len(target_entry) % 4:
+            raise PatchError(
+                f"{profile_id}: UC success target entry must contain whole instructions "
+                "and a state-initialization instruction before its branch"
+            )
+        if target + len(target_entry) > profile["inner_size"]:
+            raise PatchError(f"{profile_id}: UC success target entry exceeds inner_size")
+        if state_join >= profile["inner_size"]:
+            raise PatchError(f"{profile_id}: UC state join exceeds inner_size")
+        entry_branch_offset = target + len(target_entry) - 4
+        if (
+            decode_aarch64_b_target(
+                target_entry[-4:],
+                entry_branch_offset,
+                f"{profile_id}.uc_success_flow.target_entry",
+            )
+            != state_join
+        ):
+            raise PatchError(
+                f"{profile_id}: UC success target entry does not branch to its state join"
+            )
+        for patch in uc_patches:
+            if len(patch["_original"]) != 4 or len(patch["_replacement"]) != 4:
+                raise PatchError(
+                    f"{profile_id}.{patch['id']}: UC branch replacement must be 4 bytes"
+                )
+            if (
+                decode_aarch64_b_target(
+                    patch["_replacement"],
+                    patch["_offset"],
+                    f"{profile_id}.{patch['id']}.replacement",
+                )
+                != target
+            ):
+                raise PatchError(
+                    f"{profile_id}.{patch['id']}: UC branch does not target "
+                    "the profiled full success-state initialization"
+                )
+        if occupied & set(range(target, target + len(target_entry))):
+            raise PatchError(
+                f"{profile_id}: a patch overlaps the immutable UC success target entry"
+            )
+        success_flow["_target"] = target
+        success_flow["_state_join"] = state_join
+        success_flow["_target_entry"] = target_entry
+        profile["_uc_success_flow"] = success_flow
+
         invariants = profile.get("invariants", [])
         if not isinstance(invariants, list):
             raise PatchError(f"{profile_id}: invariants must be a list")
@@ -177,6 +256,14 @@ def load_profiles(path: Path) -> list[dict[str, Any]]:
             invariant["_offset"] = offset
             invariant["_expected"] = expected
     return profiles
+
+
+def verify_uc_success_flow(inner: bytes, profile: dict[str, Any], phase: str) -> None:
+    success_flow = profile["_uc_success_flow"]
+    target = success_flow["_target"]
+    target_entry = success_flow["_target_entry"]
+    if inner[target : target + len(target_entry)] != target_entry:
+        raise PatchError(f"UC success-state initialization changed {phase}")
 
 
 def validate_elf(data: bytes) -> dict[str, Any]:
@@ -260,6 +347,7 @@ def apply_profile(
 ) -> tuple[bytes, list[dict[str, Any]], list[int]]:
     if len(inner) != profile["inner_size"]:
         raise PatchError("profile matched hash but inner_size differs")
+    verify_uc_success_flow(inner, profile, "before patching")
     for invariant in profile["invariants"]:
         offset = invariant["_offset"]
         expected = invariant["_expected"]
@@ -307,6 +395,7 @@ def apply_profile(
         raise PatchError("changed byte offsets differ from the reviewed patch set")
     if sha256(output) != profile["expected_complete_inner_sha256"]:
         raise PatchError("patched inner SHA-256 is not the profiled complete hash")
+    verify_uc_success_flow(output, profile, "after patching")
     for patch in profile["patches"]:
         offset = patch["_offset"]
         replacement = patch["_replacement"]
@@ -500,6 +589,11 @@ def main() -> int:
         "input_profile_state": state,
         "profile_id": profile["id"],
         "patches": patch_records,
+        "uc_success_flow": {
+            "target": f"{profile['_uc_success_flow']['_target']:#x}",
+            "state_join": f"{profile['_uc_success_flow']['_state_join']:#x}",
+            "target_entry_verified_before_and_after_patching": True,
+        },
         "changed_inner_byte_offsets": [f"{offset:#x}" for offset in changed_offsets],
         "output": {
             "path": str(output_path),

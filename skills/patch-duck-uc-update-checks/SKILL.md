@@ -18,6 +18,9 @@ sequence, register, branch target, URL, or prior report still applies.
 - Preserve card-key, machine-code, signature, and server authentication logic.
 - Do not call a UI-only bypass complete. Keep stored versions, integrity hashes,
   update flags, and downstream feature checks consistent.
+- Do not redirect to a `mov success_flag, #1` middle block. Each UC branch target
+  must be the complete native success-state initialization: required constants,
+  flags, and the original transition into shared cleanup must all be present.
 - Do not claim that a client patch defeats a future server-side authentication refusal.
 
 ## Workflow
@@ -57,7 +60,11 @@ sequence, register, branch target, URL, or prior report still applies.
 
 ## Required acceptance
 
-- The UC failure exits reach the original legitimate UC-success continuation.
+- Each UC failure branch reaches a hash-locked, complete native success-state
+  initialization block whose final branch enters the original shared state join.
+- The selected UC target has all prerequisite resources initialized, or is proven
+  safe to enter directly from the failure path; no later `free` or cleanup may
+  observe an uninitialized temporary object.
 - A newer or malformed `updateshow` value cannot create a version mismatch in
   the client state used by the update UI and downstream feature gates.
 - The wrapper header is byte-identical and its compressed payload round-trips.

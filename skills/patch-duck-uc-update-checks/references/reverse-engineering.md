@@ -51,6 +51,17 @@ when the user truly satisfies every UC condition. Prefer redirecting each proven
 failure exit to that existing native success block. Do not invent a success value
 without tracing how later flags, constants, and hashes are produced.
 
+### Resource lifecycle and cleanup audit
+
+Do not treat `mov wN, #1` as a safe success entry by itself. For every candidate
+target, record the constants, flags, pointers, and temporary objects initialized
+there; trace every later cleanup/free call and identify the origin of each object.
+Prove that direct entry from each UC failure still satisfies those preconditions.
+If it does not, locate the earlier self-contained native success-state
+initialization block, including its transition into the original shared state
+join. Never jump into a middle block merely because it sets a visible success
+flag.
+
 For each branch replacement:
 
 1. Calculate the AArch64 immediate from the new instruction address.
@@ -105,6 +116,11 @@ Reject a proposed patch if any of these remain inconsistent:
 - downstream feature comparisons;
 - success constants or anti-tamper sentinels.
 
+For UC branches, reject a target that lacks the complete success-state
+initialization or skips the original cleanup path. Record the target-entry bytes,
+its final branch, and the common state-join address; the final branch must reach
+that join after all required success constants and flags have been initialized.
+
 Record original/replacement bytes and disassembly. Compare the whole inner image
 and require that only reviewed instruction sites differ.
 
@@ -119,6 +135,8 @@ Include:
 - every accepted, fully audited wrapper-header SHA-256;
 - the original inner SHA-256 and expected fully patched SHA-256;
 - each offset with exact original/replacement bytes and replacement disassembly;
+- `uc_success_flow` with the full native success-state target, common state join,
+  and exact target-entry bytes ending in a branch to that join;
 - stable invariant bytes outside patch sites that prove the expected local layout.
 
 Keep both inner and wrapper-header matching hash-locked. Do not add wildcard hashes,
@@ -161,13 +179,16 @@ external drivers or custom kernel hooks.
 Independently verify all of the following:
 
 1. Disassembly of every replacement matches the intended instruction.
-2. Every UC branch reaches the legitimate native success continuation.
-3. Remote newer versions cannot create inconsistent saved version state.
-4. The update UI is skipped because its authoritative flag is false.
-5. Downstream feature checks accept the same state and integrity hash.
-6. Wrapper header bytes match the input exactly.
-7. Independent decompression equals the patched inner byte-for-byte.
-8. Inner differences equal only the reviewed patch byte offsets.
-9. URL, path, command, import, ELF segment, and embedded-container inventories are unchanged.
-10. The report states that future direct server rejection, an external `.ko`, and
+2. Every UC branch reaches the full legitimate native success-state initialization,
+   whose final branch reaches the original common state join.
+3. The direct entry does not leave any later cleanup/free operation with an
+   uninitialized or non-owned temporary object.
+4. Remote newer versions cannot create inconsistent saved version state.
+5. The update UI is skipped because its authoritative flag is false.
+6. Downstream feature checks accept the same state and integrity hash.
+7. Wrapper header bytes match the input exactly.
+8. Independent decompression equals the patched inner byte-for-byte.
+9. Inner differences equal only the reviewed patch byte offsets.
+10. URL, path, command, import, ELF segment, and embedded-container inventories are unchanged.
+11. The report states that future direct server rejection, an external `.ko`, and
     custom kernel syscall implementations remain outside the client patch proof.
